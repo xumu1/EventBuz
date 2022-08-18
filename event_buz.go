@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sync"
 )
 
@@ -42,6 +43,12 @@ type EventBuz struct {
 // EventHandler 事件的句柄，触发事件
 type EventHandler interface {
 	Handle(ctx context.Context, formData string) error
+}
+
+type EventHandlerFuc func(ctx context.Context, formData string) error
+
+func (f EventHandlerFuc) Handle(ctx context.Context, formData string) error {
+	return f(ctx, formData)
 }
 
 func NewEventBuz(ctx context.Context) Bus {
@@ -93,11 +100,17 @@ func (e *EventBuz) Publish(ctx context.Context, topic string, params map[string]
 func (e *EventBuz) removeHandler(ctx context.Context, topic string, handler EventHandler) error {
 	handlers := e.handlers[topic]
 	l := len(handlers)
-	var idx int
+	idx := -1
 	for i := range handlers {
-		if *handlers[i] == handler {
+		v1 := reflect.ValueOf(*handlers[i])
+		v2 := reflect.ValueOf(handler)
+		if v1.Type() == v2.Type() && v1.Pointer() == v2.Pointer() {
 			idx = i
+			break
 		}
+	}
+	if idx == -1 {
+		return errors.New("handler not found")
 	}
 	copy(e.handlers[topic][idx:], e.handlers[topic][idx+1:])
 	e.handlers[topic][l-1] = nil
