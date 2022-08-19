@@ -9,3 +9,5 @@
 
 # 2022-0819 add feature
 1. add feature: once subscriber.
+2. add feature: async process.
+3. add feature: transactional process.

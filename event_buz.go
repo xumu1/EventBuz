@@ -26,6 +26,7 @@ type BusPublisher interface {
 
 // BusController 总线控制台，控制总线的行为。
 type BusController interface {
+	WaitAsync(ctx context.Context)
 }
 
 // Bus 总线本体接口，包括事件总线的各种功能，都通过bus来完成。
@@ -39,18 +40,17 @@ type Bus interface {
 type EventBuz struct {
 	handlers map[string][]EventHandler
 	lock     sync.Mutex
-}
-
-type handlerSetting struct {
-	once bool
+	wg       sync.WaitGroup
 }
 
 // EventHandler 事件的句柄，触发事件
 type EventHandler interface {
 	Handle(ctx context.Context, formData string) error
-	isOnce(ctx context.Context) bool
-	isAsync(ctx context.Context) bool
-	isTransactional(ctx context.Context) bool
+	isOnce() bool
+	isAsync() bool
+	isTransactional() bool
+	transactionLock()
+	transactionUnLock()
 }
 
 type EventHandlerFuc func(ctx context.Context, formData string) error
@@ -64,21 +64,30 @@ type EventHandlerImpl struct {
 	async           bool
 	transactional   bool
 	eventHandlerFuc EventHandlerFuc
+	sync.Mutex
+}
+
+func (h *EventHandlerImpl) transactionLock() {
+	h.Lock()
+}
+
+func (h *EventHandlerImpl) transactionUnLock() {
+	h.Unlock()
 }
 
 func (h *EventHandlerImpl) Handle(ctx context.Context, formData string) error {
 	return h.eventHandlerFuc(ctx, formData)
 }
 
-func (h *EventHandlerImpl) isOnce(ctx context.Context) bool {
+func (h *EventHandlerImpl) isOnce() bool {
 	return h.once
 }
 
-func (h *EventHandlerImpl) isAsync(ctx context.Context) bool {
+func (h *EventHandlerImpl) isAsync() bool {
 	return h.async
 }
 
-func (h *EventHandlerImpl) isTransactional(ctx context.Context) bool {
+func (h *EventHandlerImpl) isTransactional() bool {
 	return h.transactional
 }
 
@@ -86,22 +95,13 @@ func NewEventBuz(ctx context.Context) Bus {
 	return &EventBuz{
 		handlers: make(map[string][]EventHandler),
 		lock:     sync.Mutex{},
+		wg:       sync.WaitGroup{},
 	}
 }
 
 func (buz *EventBuz) Subscribe(ctx context.Context, topic string, handler EventHandler) error {
 	buz.lock.Lock()
 	defer buz.lock.Unlock()
-	return buz.doSubscribe(ctx, topic, handler, false)
-}
-
-func (buz *EventBuz) SubscribeOnce(ctx context.Context, topic string, handler EventHandler) error {
-	buz.lock.Lock()
-	defer buz.lock.Unlock()
-	return buz.doSubscribe(ctx, topic, handler, true)
-}
-
-func (buz *EventBuz) doSubscribe(ctx context.Context, topic string, handler EventHandler, once bool) error {
 	buz.handlers[topic] = append(buz.handlers[topic], handler)
 	return nil
 }
@@ -125,18 +125,32 @@ func (buz *EventBuz) Publish(ctx context.Context, topic string, params map[strin
 	if _, ok := buz.handlers[topic]; !ok {
 		return fmt.Errorf("handlers in %s topic not found", topic)
 	}
-	handlers := buz.handlers[topic]
-	for idx, item := range handlers {
-		if item.isOnce(ctx) {
+	for idx, item := range buz.handlers[topic] {
+		if item.isOnce() {
 			if err := buz.removeHandlerByIndex(ctx, topic, idx); err != nil {
 				return err
 			}
 		}
-		if err := item.Handle(ctx, string(param)); err != nil {
-			return err
+		if !item.isAsync() {
+			return buz.doPublish(ctx, item, string(param))
 		}
+		buz.wg.Add(1)
+		item.transactionLock()
+		go buz.doPublish(ctx, item, string(param))
 	}
 	return nil
+}
+
+func (buz *EventBuz) doPublish(ctx context.Context, handler EventHandler, params string) error {
+	if handler.isAsync() {
+		defer buz.wg.Done()
+	}
+	if handler.isTransactional() {
+		handler.transactionLock()
+		defer handler.transactionUnLock()
+	}
+	err := handler.Handle(ctx, params)
+	return err
 }
 
 func (buz *EventBuz) removeHandler(ctx context.Context, topic string, handler EventHandler) error {
@@ -166,4 +180,8 @@ func (buz *EventBuz) removeHandlerByIndex(ctx context.Context, topic string, idx
 	buz.handlers[topic][l-1] = nil
 	buz.handlers[topic] = buz.handlers[topic][:l-1]
 	return nil
+}
+
+func (buz *EventBuz) WaitAsync(ctx context.Context) {
+	buz.wg.Wait()
 }

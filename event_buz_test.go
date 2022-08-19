@@ -7,7 +7,43 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 )
+
+var ctx context.Context
+var topic string
+var buz Bus
+
+func init() {
+	ctx = context.Background()
+	topic = "test-topic"
+	buz = NewEventBuz(ctx)
+}
+
+func Test_AsyncHandler(t *testing.T) {
+	myHandler := &EventHandlerImpl{
+		once:  false,
+		async: false,
+		eventHandlerFuc: func(ctx context.Context, formData string) error {
+			fmt.Println(formData)
+			time.Sleep(3 * time.Second)
+			return nil
+		},
+	}
+	buz.Subscribe(ctx, topic, myHandler)
+	buz.Publish(ctx, topic, map[string]interface{}{
+		"a": "aa",
+	})
+	fmt.Printf("now time is: %v\n", time.Now())
+	buz.Publish(ctx, topic, map[string]interface{}{
+		"b": "bb",
+	})
+	fmt.Printf("now time is: %v\n", time.Now())
+	buz.WaitAsync(ctx)
+	fmt.Printf("now time is: %v\n", time.Now())
+	fmt.Println("it is fine.")
+
+}
 
 func Test_base_function_1(t *testing.T) {
 	//ctx := context.Background()
@@ -31,9 +67,6 @@ func Test_base_function_1(t *testing.T) {
 	//})
 }
 func Test_base_function_2(t *testing.T) {
-	ctx := context.Background()
-	topic := "test-topic"
-	buz := NewEventBuz(ctx)
 	handler := &EventHandlerImpl{
 		eventHandlerFuc: func(ctx context.Context, formData string) error {
 			fmt.Println(formData)
