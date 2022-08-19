@@ -6,3 +6,6 @@
 # 2022-0819 add feature
 1. add feature: you can use a function as event handler right now rather than initialize a struct which implement `EventHandler`.
 2. using reflect package to  verify the equality between with two `event handler`
+
+# 2022-0819 add feature
+1. add feature: once subscriber.
