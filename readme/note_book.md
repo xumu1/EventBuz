@@ -4,3 +4,7 @@
 # Q&A
 Q1：如果想存function 作为 handler 使用，如何解决不能在接口中存值，又不能将接口 hash 用 map 的方式挂一个setting。
 A1：使用实现类+接口返回实现类参数的方式，将配置项塞到接口中。
+
+# 学习计划
+1. net/http包
+2. net/rpc包

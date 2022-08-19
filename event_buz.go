@@ -52,17 +52,11 @@ type EventHandler interface {
 	transactionUnLock()
 }
 
-type EventHandlerFuc func(formData string) error
-
-func (f EventHandlerFuc) Handle(formData string) error {
-	return f(formData)
-}
-
 type EventHandlerImpl struct {
 	once            bool
 	async           bool
 	transactional   bool
-	eventHandlerFuc EventHandlerFuc
+	eventHandlerFuc func(formData string) error
 	sync.Mutex
 }
 
