@@ -4,7 +4,6 @@
 package EventBuz
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -20,7 +19,7 @@ type BusSubscriber interface {
 
 // BusPublisher 事件发布者，向总线的某个topic发布事件。
 type BusPublisher interface {
-	Publish(topic string, params map[string]interface{}) error
+	Publish(topic string, params string)
 }
 
 // BusController 总线控制台，控制总线的行为。
@@ -111,27 +110,25 @@ func (buz *EventBuz) UnSubscribe(topic string, handler EventHandler) error {
 	return fmt.Errorf("topic %s not found", topic)
 }
 
-func (buz *EventBuz) Publish(topic string, params map[string]interface{}) error {
+func (buz *EventBuz) Publish(topic string, params string) {
 	buz.lock.Lock()
 	defer buz.lock.Unlock()
-	param, _ := json.Marshal(params)
 	if _, ok := buz.handlers[topic]; !ok {
-		return fmt.Errorf("handlers in %s topic not found", topic)
+		fmt.Errorf("handlers in %s topic not found", topic)
 	}
 	for idx, item := range buz.handlers[topic] {
 		if item.isOnce() {
 			if err := buz.removeHandlerByIndex(topic, idx); err != nil {
-				return err
+				fmt.Errorf("handlers in %s topic error : %v", topic, err)
 			}
 		}
 		if !item.isAsync() {
-			return buz.doPublish(item, string(param))
+			buz.doPublish(item, string(params))
 		}
 		buz.wg.Add(1)
 		item.transactionLock()
-		go buz.doPublish(item, string(param))
+		go buz.doPublish(item, string(params))
 	}
-	return nil
 }
 
 func (buz *EventBuz) doPublish(handler EventHandler, params string) error {
